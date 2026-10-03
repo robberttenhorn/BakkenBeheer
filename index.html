@@ -278,7 +278,7 @@
 
   <button class="reset" id="demo" hidden>Probeer met nep-codes (demo)</button>
   <button class="reset" id="reset">Alles terugzetten</button>
-  <div class="version">Versie 11</div>
+  <div class="version">Versie 12</div>
 </main>
 
 <div class="overlay" id="show" hidden>
@@ -363,7 +363,8 @@
     { id: 'premium', title: 'Premium of soda', hint: 'Premium vouchers', icon: '🍸', total: 3 },
   ];
   const KEY = 'bakkenbeheer-v2';
-  const SYNC_PREFIX = 'BAKKENBEHEER1';
+  const SYNC_PREFIX = 'BAKKENBEHEER2';
+  const SYNC_PREFIX_OLD = 'BAKKENBEHEER1';
 
   // Per voucher: u = gebruikt (true/false), t = tijdstip van de laatste wijziging (seconden).
   // Bij het bijwerken met elkaar wint per voucher de laatste wijziging.
@@ -633,8 +634,8 @@
       document.getElementById('toast').classList.remove('show');
       return;
     }
-    // Vaste volgorde, zodat elke telefoon dezelfde nummering heeft (nodig voor het bijwerken met elkaar)
-    codes[g.id] = unique.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    // Volgorde zoals de afbeeldingen zijn geselecteerd: de eerste is voucher 1, enzovoort
+    codes[g.id] = unique;
     codeImgs[g.id] = codes[g.id].map(c => labels[c] || null);
     qrImgs[g.id] = codes[g.id].map(c => origQrs[c] || null);
     saveCodes();
@@ -659,7 +660,7 @@
     fillCode(document.getElementById('voucher-code'), g, i);
     document.getElementById('voucher-demo').hidden = !isDemo(qrOf(g.id, i));
     document.getElementById('voucher-qr').hidden = false;
-    if (showShot('voucher', g, i)) document.getElementById('voucher-nr').textContent = `Nr. ${i + 1} in de app`;
+    showShot('voucher', g, i);
     document.getElementById('voucher-used').hidden = !v.u;
     document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
     open('voucher');
@@ -695,7 +696,7 @@
           : hasCodes(g.id)
           ? (isDemo(qrOf(g.id, 0))
             ? `<div class="codes-note">Dit zijn nep-codes voor de demo. <button data-remove>Verwijderen</button></div>`
-            : `<div class="codes-note">QR-codes staan alleen op deze telefoon. De nummers in de app zijn niet de nummers op de vouchers. <button data-remove>Verwijderen</button></div>`)
+            : `<div class="codes-note">Op volgorde zoals je ze selecteerde. De vouchers staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`)
           : `<button class="add">📷 Voeg ${g.total} screenshots van de QR-codes toe</button>`}`;
 
       const tokens = card.querySelector('.tokens');
@@ -857,13 +858,13 @@
     const qr = qrOf(g.id, i), code = codeOf(g.id, i);
     document.getElementById('step-count').textContent = `VOUCHER ${stepAt + 1} VAN ${steps.length}`;
     document.getElementById('step-title').textContent = `${g.icon} ${g.title}`;
-    document.getElementById('step-nr').textContent = `${isBuiltin(g.id) ? 'Token' : 'Voucher'} ${i + 1} van ${g.total}`;
+    document.getElementById('step-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
     fillCode(document.getElementById('step-code'), g, i);
     document.getElementById('step-demo').hidden = !isDemo(qr);
     document.getElementById('step-qr').hidden = !qr;
     document.getElementById('step-noqr').hidden = !!qr;
     if (qr) showVoucherQr(document.getElementById('step-qr'), g, i);
-    if (qr && showShot('step', g, i)) document.getElementById('step-nr').textContent = `Nr. ${i + 1} in de app`;
+    if (qr) showShot('step', g, i);
     else { document.getElementById('step-shot').hidden = true; document.getElementById('step-shothint').hidden = true; }
     const last = stepAt === steps.length - 1;
     document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
@@ -956,19 +957,32 @@
   // ---------- Bijwerken met elkaar via een QR-code ----------
 
   // Stand als korte tekst: BAKKENBEHEER1|bier|premium, per voucher "1" of "0" plus tijdstip (base36)
+  // Korte vingerafdruk van een QR-code, om dezelfde voucher op een andere telefoon terug te vinden
+  function fingerprint(text) {
+    let h = 0x811c9dc5;
+    for (let n = 0; n < text.length; n++) { h ^= text.charCodeAt(n); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(36).slice(0, 5);
+  }
+
   function encode() {
-    return [SYNC_PREFIX, ...GROUPS.map(g => state[g.id].map(v => (v.u ? '1' : '0') + v.t.toString(36)).join(','))].join('|');
+    return [SYNC_PREFIX, ...GROUPS.map(g => state[g.id].map((v, i) => {
+      const qr = hasCodes(g.id) ? qrOf(g.id, i) : null;
+      return (v.u ? '1' : '0') + v.t.toString(36) + (qr && !isDemo(qr) ? '.' + fingerprint(qr) : '');
+    }).join(','))].join('|');
   }
 
   function decode(text) {
     const parts = String(text).trim().split('|');
-    if (parts[0] !== SYNC_PREFIX || parts.length !== GROUPS.length + 1) return null;
+    if ((parts[0] !== SYNC_PREFIX && parts[0] !== SYNC_PREFIX_OLD) || parts.length !== GROUPS.length + 1) return null;
     const s = {};
     for (let k = 0; k < GROUPS.length; k++) {
       const g = GROUPS[k];
       const items = parts[k + 1].split(',');
       if (items.length !== g.total) return null;
-      s[g.id] = items.map(item => ({ u: item[0] === '1', t: parseInt(item.slice(1), 36) }));
+      s[g.id] = items.map(item => {
+        const [head, fp] = item.split('.');
+        return { u: head[0] === '1', t: parseInt(head.slice(1), 36), fp: fp || null };
+      });
       if (s[g.id].some(v => !Number.isFinite(v.t))) return null;
     }
     return s;
@@ -977,13 +991,21 @@
   // Neemt per voucher de laatste wijziging over. Geeft terug hoeveel vouchers veranderd zijn.
   function merge(other) {
     let changed = 0;
-    GROUPS.forEach(g => other[g.id].forEach((v, i) => {
+    GROUPS.forEach(g => {
+      // Hebben beide telefoons de QR-codes, zoek dan dezelfde voucher op vingerafdruk; anders op plek
+      const byFp = {};
+      if (hasCodes(g.id)) state[g.id].forEach((v, i) => { const q = qrOf(g.id, i); if (q && !isDemo(q)) byFp[fingerprint(q)] = i; });
+      const useFp = Object.keys(byFp).length > 0;
+      other[g.id].forEach((v, k) => {
+      const i = useFp && v.fp ? byFp[v.fp] : k;
+      if (i === undefined) return;
       const mine = state[g.id][i];
       if (v.t > mine.t || (v.t === mine.t && v.u && !mine.u)) {
         if (v.u !== mine.u) changed++;
         state[g.id][i] = { u: v.u, t: v.t };
       }
-    }));
+      });
+    });
     save();
     render();
     return changed;

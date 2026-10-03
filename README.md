@@ -17,7 +17,8 @@ Elke telefoon houdt zijn eigen stand bij. Er is geen account, database of server
 De app bewaart de afbeeldingen precies zoals je ze uploadt (niet bijgesneden of aangepast) en toont ze bij de voucher. Tik op een voucher om hem schermvullend te zien.
 De QR-codes worden alleen op je eigen telefoon bewaard. Ze komen nergens online en niet in deze repository.
 Aan de bar tik je op **Toon volgende voucher**, laat je de QR-code scannen en tik je op **Gescand, afvinken**.
-De app zet de codes in een vaste volgorde, zodat voucher 1 op elke telefoon dezelfde is (nodig voor het bijwerken met elkaar).
+De vouchers komen in de app in de volgorde waarin je ze selecteert. Selecteer ze dus op volgorde: eerst token 1, dan token 2, enzovoort.
+Bij het bijwerken met elkaar herkent de app de vouchers aan hun QR-code, dus ook bij een andere volgorde wordt de juiste voucher afgevinkt.
 
 ## Demo zonder echte vouchers
 
