@@ -476,7 +476,7 @@
           : hasCodes(g.id)
           ? (isDemo(qrOf(g.id, 0))
             ? `<div class="codes-note">Dit zijn nep-codes voor de demo. <button data-remove>Verwijderen</button></div>`
-            : `<div class="codes-note">QR-codes staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`)
+            : `<div class="codes-note">QR-codes staan alleen op deze telefoon. De nummers in de app zijn niet de nummers op de vouchers. <button data-remove>Verwijderen</button></div>`)
           : `<button class="add">📷 Voeg ${g.total} screenshots van de QR-codes toe</button>`}`;
 
       const tokens = card.querySelector('.tokens');
@@ -635,7 +635,7 @@
     const qr = qrOf(g.id, i), code = codeOf(g.id, i);
     document.getElementById('step-count').textContent = `VOUCHER ${stepAt + 1} VAN ${steps.length}`;
     document.getElementById('step-title').textContent = `${g.icon} ${g.title}`;
-    document.getElementById('step-nr').textContent = `Token ${i + 1} van ${g.total}`;
+    document.getElementById('step-nr').textContent = `${isBuiltin(g.id) ? 'Token' : 'Voucher'} ${i + 1} van ${g.total}`;
     const codeEl = document.getElementById('step-code');
     codeEl.textContent = code || '';
     codeEl.hidden = !code;
