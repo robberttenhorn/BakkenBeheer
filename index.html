@@ -99,6 +99,45 @@
   }
   .install b { color: var(--text); }
 
+  .sync .card-hint { margin-bottom: 14px; line-height: 1.4; }
+  .sync-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sync-buttons button {
+    border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--text);
+    border-radius: 16px; padding: 14px 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .sync-buttons button span { display: block; font-size: 26px; margin-bottom: 4px; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    background: var(--bg);
+    padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    text-align: center;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay h2 { margin: 0; font-size: 24px; }
+  .overlay p { margin: 0; color: var(--muted); max-width: 360px; line-height: 1.4; }
+  .qr-box { background: #fff; border-radius: 20px; padding: 16px; width: min(84vw, 360px); }
+  .qr-box img, .qr-box svg { display: block; width: 100%; height: auto; }
+  .camera {
+    position: relative; width: min(84vw, 360px); aspect-ratio: 1;
+    border-radius: 20px; overflow: hidden; background: #000;
+  }
+  .camera video { width: 100%; height: 100%; object-fit: cover; }
+  .camera::after {
+    content: ""; position: absolute; inset: 14%;
+    border: 3px solid rgba(255, 255, 255, .8); border-radius: 16px;
+  }
+  .overlay .big {
+    border: 0; border-radius: 16px; padding: 14px 22px; font-size: 17px; font-weight: 700;
+    background: var(--beer); color: #000; cursor: pointer; min-width: 220px;
+  }
+  .overlay .close {
+    border: 1px solid var(--line); background: none; color: var(--muted);
+    border-radius: 999px; padding: 10px 22px; font-size: 15px; cursor: pointer;
+  }
+  .result { font-size: 64px; line-height: 1; }
+
   .toast {
     position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px);
     transform: translate(-50%, 140%);
@@ -127,31 +166,83 @@
 
   <div id="groups"></div>
 
+  <section class="card sync">
+    <div class="card-title">🔄 Bijwerken met elkaar</div>
+    <div class="card-hint">Werkt zonder internet. De een laat zijn stand zien, de ander scant die. Daarna andersom, dan hebben jullie allebei hetzelfde overzicht.</div>
+    <div class="sync-buttons">
+      <button id="show-btn"><span>📱</span>Laat mijn stand zien</button>
+      <button id="scan-btn"><span>📷</span>Scan een ander</button>
+    </div>
+  </section>
+
   <button class="reset" id="reset">Alles terugzetten</button>
 </main>
 
+<div class="overlay" id="show" hidden>
+  <h2>Mijn stand</h2>
+  <p>Laat de ander deze code scannen met "Scan een ander".</p>
+  <div class="qr-box" id="qr"></div>
+  <p id="show-summary"></p>
+  <button class="close" data-close>Klaar</button>
+</div>
+
+<div class="overlay" id="scan" hidden>
+  <h2>Scan een ander</h2>
+  <p id="scan-text">Richt je camera op de code op het scherm van de ander.</p>
+  <div class="camera" id="camera"><video id="video" playsinline muted></video></div>
+  <button class="big" id="photo-btn" hidden>Maak een foto van de code</button>
+  <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+  <button class="close" data-close>Annuleren</button>
+</div>
+
+<div class="overlay" id="done" hidden>
+  <div class="result">✅</div>
+  <h2 id="done-title"></h2>
+  <p id="done-text"></p>
+  <button class="big" id="done-show">Laat nu mijn stand zien</button>
+  <button class="close" data-close>Klaar</button>
+</div>
+
 <div class="toast" id="toast"><span id="toast-text"></span><button id="undo">Herstel</button></div>
 
+<script src="lib/qrcode.js"></script>
+<script src="lib/jsQR.js"></script>
 <script>
   const GROUPS = [
     { id: 'beer', title: 'Bier of water', hint: 'Gewone vouchers', icon: '🍺', total: 15 },
     { id: 'premium', title: 'Premium of soda', hint: 'Premium vouchers', icon: '🍸', total: 3 },
   ];
-  const KEY = 'bakkenbeheer-v1';
+  const KEY = 'bakkenbeheer-v2';
+  const SYNC_PREFIX = 'BAKKENBEHEER1';
 
-  // Per groep: lijst met true (gebruikt) of false (nog over)
+  // Per voucher: u = gebruikt (true/false), t = tijdstip van de laatste wijziging (seconden).
+  // Bij het bijwerken met elkaar wint per voucher de laatste wijziging.
   let state = load();
+
+  function now() { return Math.floor(Date.now() / 1000); }
 
   function fresh() {
     const s = {};
-    GROUPS.forEach(g => { s[g.id] = Array(g.total).fill(false); });
+    GROUPS.forEach(g => { s[g.id] = Array.from({ length: g.total }, () => ({ u: false, t: 0 })); });
     return s;
+  }
+
+  function valid(s) {
+    return s && GROUPS.every(g => Array.isArray(s[g.id]) && s[g.id].length === g.total &&
+      s[g.id].every(v => v && typeof v.u === 'boolean' && Number.isFinite(v.t)));
   }
 
   function load() {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY));
-      if (saved && GROUPS.every(g => Array.isArray(saved[g.id]) && saved[g.id].length === g.total)) return saved;
+      if (valid(saved)) return saved;
+      // Stand uit de eerste versie van de app overnemen
+      const old = JSON.parse(localStorage.getItem('bakkenbeheer-v1'));
+      if (old && GROUPS.every(g => Array.isArray(old[g.id]) && old[g.id].length === g.total)) {
+        const s = fresh();
+        GROUPS.forEach(g => old[g.id].forEach((used, i) => { if (used) s[g.id][i] = { u: true, t: now() }; }));
+        return s;
+      }
     } catch (e) {}
     return fresh();
   }
@@ -160,7 +251,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
   }
 
-  function left(id) { return state[id].filter(used => !used).length; }
+  function left(id) { return state[id].filter(v => !v.u).length; }
 
   function render() {
     const root = document.getElementById('groups');
@@ -181,17 +272,17 @@
         <button class="use" ${n === 0 ? 'disabled' : ''}>${n === 0 ? 'Op! 😢' : 'Gebruik 1 voucher'}</button>`;
 
       const tokens = card.querySelector('.tokens');
-      state[g.id].forEach((used, i) => {
+      state[g.id].forEach((v, i) => {
         const t = document.createElement('button');
-        t.className = 'token' + (used ? ' used' : '');
-        t.textContent = used ? '✓' : g.icon;
-        t.setAttribute('aria-label', `${g.title} voucher ${i + 1}, ${used ? 'gebruikt' : 'nog over'}`);
+        t.className = 'token' + (v.u ? ' used' : '');
+        t.textContent = v.u ? '✓' : g.icon;
+        t.setAttribute('aria-label', `${g.title} voucher ${i + 1}, ${v.u ? 'gebruikt' : 'nog over'}`);
         t.onclick = () => toggle(g, i);
         tokens.appendChild(t);
       });
 
       card.querySelector('.use').onclick = () => {
-        const i = state[g.id].indexOf(false);
+        const i = state[g.id].findIndex(v => !v.u);
         if (i !== -1) toggle(g, i);
       };
       root.appendChild(card);
@@ -200,14 +291,18 @@
 
   let undoTimer, lastChange;
 
+  function setUsed(id, i, used) {
+    state[id][i] = { u: used, t: now() };
+  }
+
   function toggle(g, i) {
-    state[g.id][i] = !state[g.id][i];
+    setUsed(g.id, i, !state[g.id][i].u);
     lastChange = { id: g.id, i };
     save();
     render();
     if (navigator.vibrate) navigator.vibrate(20);
     const n = left(g.id);
-    showToast(state[g.id][i]
+    showToast(state[g.id][i].u
       ? `${g.icon} Voucher gebruikt, nog ${n} over`
       : `${g.icon} Voucher teruggezet, nog ${n} over`);
   }
@@ -223,7 +318,7 @@
   document.getElementById('undo').onclick = () => {
     if (!lastChange) return;
     const { id, i } = lastChange;
-    state[id][i] = !state[id][i];
+    setUsed(id, i, !state[id][i].u);
     lastChange = null;
     save();
     render();
@@ -232,11 +327,164 @@
 
   document.getElementById('reset').onclick = () => {
     if (confirm('Alle vouchers weer op "nog over" zetten?')) {
-      state = fresh();
+      const t = now();
+      GROUPS.forEach(g => state[g.id].forEach((v, i) => { state[g.id][i] = { u: false, t }; }));
       lastChange = null;
       save();
       render();
     }
+  };
+
+  // ---------- Bijwerken met elkaar via een QR-code ----------
+
+  // Stand als korte tekst: BAKKENBEHEER1|bier|premium, per voucher "1" of "0" plus tijdstip (base36)
+  function encode() {
+    return [SYNC_PREFIX, ...GROUPS.map(g => state[g.id].map(v => (v.u ? '1' : '0') + v.t.toString(36)).join(','))].join('|');
+  }
+
+  function decode(text) {
+    const parts = String(text).trim().split('|');
+    if (parts[0] !== SYNC_PREFIX || parts.length !== GROUPS.length + 1) return null;
+    const s = {};
+    for (let k = 0; k < GROUPS.length; k++) {
+      const g = GROUPS[k];
+      const items = parts[k + 1].split(',');
+      if (items.length !== g.total) return null;
+      s[g.id] = items.map(item => ({ u: item[0] === '1', t: parseInt(item.slice(1), 36) }));
+      if (s[g.id].some(v => !Number.isFinite(v.t))) return null;
+    }
+    return s;
+  }
+
+  // Neemt per voucher de laatste wijziging over. Geeft terug hoeveel vouchers veranderd zijn.
+  function merge(other) {
+    let changed = 0;
+    GROUPS.forEach(g => other[g.id].forEach((v, i) => {
+      const mine = state[g.id][i];
+      if (v.t > mine.t || (v.t === mine.t && v.u && !mine.u)) {
+        if (v.u !== mine.u) changed++;
+        state[g.id][i] = { u: v.u, t: v.t };
+      }
+    }));
+    save();
+    render();
+    return changed;
+  }
+
+  function open(id) {
+    document.querySelectorAll('.overlay').forEach(o => { o.hidden = o.id !== id; });
+  }
+
+  function closeAll() {
+    stopCamera();
+    document.querySelectorAll('.overlay').forEach(o => { o.hidden = true; });
+  }
+
+  document.querySelectorAll('[data-close]').forEach(b => { b.onclick = closeAll; });
+
+  function showMine() {
+    const qr = qrcode(0, 'L');
+    qr.addData(encode());
+    qr.make();
+    document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+    document.getElementById('show-summary').textContent =
+      GROUPS.map(g => `${g.icon} ${left(g.id)} van ${g.total} over`).join('   ');
+    open('show');
+  }
+
+  document.getElementById('show-btn').onclick = showMine;
+  document.getElementById('done-show').onclick = showMine;
+
+  let stream = null, scanning = false;
+  const video = document.getElementById('video');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  function stopCamera() {
+    scanning = false;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    video.srcObject = null;
+  }
+
+  // Zoekt een QR-code in een plaatje (camerabeeld of foto)
+  function findCode(source, w, h) {
+    const scale = Math.min(1, 800 / Math.max(w, h));
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+    return code ? code.data : null;
+  }
+
+  // Geeft true terug als de code een stand van Bakkenbeheer was
+  function handleCode(text) {
+    const other = decode(text);
+    if (!other) return false;
+    stopCamera();
+    const changed = merge(other);
+    if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
+    document.getElementById('done-title').textContent = changed === 0
+      ? 'Je was al bij'
+      : `${changed} voucher${changed === 1 ? '' : 's'} bijgewerkt`;
+    document.getElementById('done-text').textContent =
+      GROUPS.map(g => `${g.icon} ${left(g.id)} van ${g.total} over`).join('   ') +
+      '. Laat nu jouw stand aan de ander zien, dan is die ook bij.';
+    open('done');
+    return true;
+  }
+
+  function cameraFailed() {
+    stopCamera();
+    document.getElementById('camera').hidden = true;
+    document.getElementById('scan-text').textContent =
+      'De camera kon niet live starten. Maak een foto van de code op het scherm van de ander.';
+    document.getElementById('photo-btn').hidden = false;
+  }
+
+  document.getElementById('scan-btn').onclick = async () => {
+    document.getElementById('camera').hidden = false;
+    document.getElementById('photo-btn').hidden = true;
+    document.getElementById('scan-text').textContent = 'Richt je camera op de code op het scherm van de ander.';
+    open('scan');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      if (document.getElementById('scan').hidden) { stopCamera(); return; }
+      video.srcObject = stream;
+      await video.play();
+      scanning = true;
+      requestAnimationFrame(tick);
+    } catch (e) {
+      cameraFailed();
+    }
+  };
+
+  function tick() {
+    if (!scanning) return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      const text = findCode(video, video.videoWidth, video.videoHeight);
+      if (text && handleCode(text)) return;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  document.getElementById('photo-btn').onclick = () => document.getElementById('photo').click();
+
+  document.getElementById('photo').onchange = e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const text = findCode(img, img.naturalWidth, img.naturalHeight);
+      if (!text || !handleCode(text)) {
+        document.getElementById('scan-text').textContent =
+          'Geen code gevonden. Probeer het nog eens, zo recht en scherp mogelijk.';
+      }
+    };
+    img.src = URL.createObjectURL(file);
   };
 
   // Laat de beginscherm-tip alleen zien in Safari, niet als de app al op het beginscherm staat

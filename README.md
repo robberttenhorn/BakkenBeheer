@@ -8,6 +8,16 @@ Simpel appje om de drink vouchers bij te houden (528 Ibiza):
 Tik op een voucher of op "Gebruik 1 voucher" om hem af te strepen. Per ongeluk getikt? Tik op "Herstel" of tik nog een keer op de voucher.
 Elke telefoon houdt zijn eigen stand bij. Er is geen account, database of server nodig.
 
+## Bijwerken met elkaar (zonder internet)
+
+1. De een tikt op **Laat mijn stand zien**. Er verschijnt een QR-code.
+2. De ander tikt op **Scan een ander** en richt de camera op die code.
+3. Daarna andersom, dan hebben jullie allebei hetzelfde overzicht.
+
+Met z'n drieën: A scant B, A scant C, daarna scannen B en C de code van A.
+Per voucher telt de laatste wijziging, dus ook een teruggezette voucher wordt meegenomen.
+Start de camera niet, dan kun je ook een foto van de code maken.
+
 ## Op je iPhone zetten
 
 1. Open de link in **Safari**.
