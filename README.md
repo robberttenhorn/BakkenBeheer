@@ -18,6 +18,11 @@ De QR-codes worden alleen op je eigen telefoon bewaard. Ze komen nergens online 
 Aan de bar tik je op **Toon volgende voucher**, laat je de QR-code scannen en tik je op **Gescand, afvinken**.
 De app zet de codes in een vaste volgorde, zodat voucher 1 op elke telefoon dezelfde is (nodig voor het bijwerken met elkaar).
 
+## Demo zonder echte vouchers
+
+Tik onderaan op **Probeer met nep-codes (demo)**. De app vult zich dan met nep-codes, herkenbaar aan het label "DEMO, NIET ECHT".
+Klaar met de demo? Tik bij elk blok op **Verwijderen** en voeg daarna de echte screenshots toe.
+
 ## Bijwerken met elkaar (zonder internet)
 
 1. De een tikt op **Laat mijn stand zien**. Er verschijnt een QR-code.

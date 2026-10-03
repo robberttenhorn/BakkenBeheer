@@ -92,6 +92,7 @@
     background: none; border: 1px solid var(--line); color: var(--muted);
     border-radius: 999px; padding: 10px 18px; font-size: 14px; cursor: pointer;
   }
+  [hidden] { display: none !important; }
   .install {
     background: rgba(255, 255, 255, .06); border: 1px dashed var(--line);
     border-radius: 16px; padding: 12px 14px; font-size: 14px; color: var(--muted);
@@ -146,6 +147,10 @@
   .codes-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; }
   .codes-note button { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 13px; cursor: pointer; }
   .voucher-nr { font-size: 15px; color: var(--muted); }
+  .demo-badge {
+    display: inline-block; background: var(--premium); color: #fff; font-weight: 800;
+    border-radius: 999px; padding: 4px 12px; font-size: 13px; letter-spacing: 1px;
+  }
   .voucher-used { color: var(--premium); font-weight: 700; }
 
   .toast {
@@ -186,6 +191,7 @@
     </div>
   </section>
 
+  <button class="reset" id="demo" hidden>Probeer met nep-codes (demo)</button>
   <button class="reset" id="reset">Alles terugzetten</button>
 </main>
 
@@ -209,6 +215,7 @@
 <div class="overlay" id="voucher" hidden>
   <h2 id="voucher-title"></h2>
   <div class="voucher-nr" id="voucher-nr"></div>
+  <div class="demo-badge" id="voucher-demo" hidden>DEMO, NIET ECHT</div>
   <div class="qr-box" id="voucher-qr"></div>
   <div class="voucher-used" id="voucher-used" hidden>Deze voucher is al gebruikt</div>
   <button class="big" id="voucher-toggle"></button>
@@ -296,6 +303,21 @@
 
   function hasCodes(id) { return Array.isArray(codes[id]); }
 
+  // Demo: vult de app met nep-codes, zodat je hem kunt laten zien zonder echte vouchers
+  const DEMO_PREFIX = 'DEMO-';
+  function isDemo(code) { return String(code).startsWith(DEMO_PREFIX); }
+
+  document.getElementById('demo').onclick = () => {
+    GROUPS.forEach(g => {
+      if (!hasCodes(g.id)) {
+        codes[g.id] = Array.from({ length: g.total }, (_, i) => `${DEMO_PREFIX}${g.id.toUpperCase()}-${String(i + 1).padStart(2, '0')}`);
+      }
+    });
+    saveCodes();
+    render();
+    showToast('Nep-codes toegevoegd voor de demo', false);
+  };
+
   function readImage(file) {
     return new Promise(resolve => {
       const img = new Image();
@@ -350,6 +372,7 @@
     document.getElementById('voucher-qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
     document.getElementById('voucher-title').textContent = `${g.icon} ${g.title}`;
     document.getElementById('voucher-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
+    document.getElementById('voucher-demo').hidden = !isDemo(codes[g.id][i]);
     document.getElementById('voucher-used').hidden = !v.u;
     document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
     open('voucher');
@@ -363,6 +386,7 @@
   };
 
   function render() {
+    document.getElementById('demo').hidden = GROUPS.every(g => hasCodes(g.id));
     const root = document.getElementById('groups');
     root.innerHTML = '';
     GROUPS.forEach(g => {
@@ -380,7 +404,9 @@
         <div class="tokens"></div>
         <button class="use" ${n === 0 ? 'disabled' : ''}>${n === 0 ? 'Op! 😢' : hasCodes(g.id) ? 'Toon volgende voucher' : 'Gebruik 1 voucher'}</button>
         ${hasCodes(g.id)
-          ? `<div class="codes-note">QR-codes staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`
+          ? (isDemo(codes[g.id][0])
+            ? `<div class="codes-note">Dit zijn nep-codes voor de demo. <button data-remove>Verwijderen</button></div>`
+            : `<div class="codes-note">QR-codes staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`)
           : `<button class="add">📷 Voeg ${g.total} screenshots van de QR-codes toe</button>`}`;
 
       const tokens = card.querySelector('.tokens');
