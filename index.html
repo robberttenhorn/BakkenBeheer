@@ -138,6 +138,16 @@
   }
   .result { font-size: 64px; line-height: 1; }
 
+  .add {
+    width: 100%; margin-top: 10px;
+    border: 1px dashed var(--line); background: none; color: var(--muted);
+    border-radius: 16px; padding: 12px; font-size: 15px; cursor: pointer;
+  }
+  .codes-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; }
+  .codes-note button { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 13px; cursor: pointer; }
+  .voucher-nr { font-size: 15px; color: var(--muted); }
+  .voucher-used { color: var(--premium); font-weight: 700; }
+
   .toast {
     position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px);
     transform: translate(-50%, 140%);
@@ -146,6 +156,7 @@
     font-size: 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
     transition: transform .25s; max-width: calc(100% - 32px); white-space: nowrap;
   }
+  .toast:not(.show) { visibility: hidden; transition: transform .25s, visibility 0s .25s; }
   .toast.show { transform: translate(-50%, 0); }
   .toast button {
     border: 0; background: #000; color: #fff; border-radius: 999px;
@@ -195,6 +206,17 @@
   <button class="close" data-close>Annuleren</button>
 </div>
 
+<div class="overlay" id="voucher" hidden>
+  <h2 id="voucher-title"></h2>
+  <div class="voucher-nr" id="voucher-nr"></div>
+  <div class="qr-box" id="voucher-qr"></div>
+  <div class="voucher-used" id="voucher-used" hidden>Deze voucher is al gebruikt</div>
+  <button class="big" id="voucher-toggle"></button>
+  <button class="close" data-close>Sluiten</button>
+</div>
+
+<input type="file" id="import" accept="image/*" multiple hidden>
+
 <div class="overlay" id="done" hidden>
   <div class="result">✅</div>
   <h2 id="done-title"></h2>
@@ -208,6 +230,7 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jsQR.js"></script>
 <script>
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
   const GROUPS = [
     { id: 'beer', title: 'Bier of water', hint: 'Gewone vouchers', icon: '🍺', total: 15 },
     { id: 'premium', title: 'Premium of soda', hint: 'Premium vouchers', icon: '🍸', total: 3 },
@@ -253,6 +276,92 @@
 
   function left(id) { return state[id].filter(v => !v.u).length; }
 
+  // ---------- QR-codes van de vouchers, alleen opgeslagen op deze telefoon ----------
+
+  const CODES_KEY = 'bakkenbeheer-codes';
+  let codes = loadCodes();
+  let importGroup = null;
+
+  function loadCodes() {
+    try {
+      const c = JSON.parse(localStorage.getItem(CODES_KEY)) || {};
+      GROUPS.forEach(g => { if (!Array.isArray(c[g.id]) || c[g.id].length !== g.total) delete c[g.id]; });
+      return c;
+    } catch (e) { return {}; }
+  }
+
+  function saveCodes() {
+    try { localStorage.setItem(CODES_KEY, JSON.stringify(codes)); } catch (e) {}
+  }
+
+  function hasCodes(id) { return Array.isArray(codes[id]); }
+
+  function readImage(file) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(img.src);
+        // Eerst verkleind (snel), anders op volle grootte proberen
+        resolve(findCode(img, img.naturalWidth, img.naturalHeight, 1000) ||
+                findCode(img, img.naturalWidth, img.naturalHeight, 2600));
+      };
+      img.onerror = () => { URL.revokeObjectURL(img.src); resolve(null); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  document.getElementById('import').onchange = async e => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    const g = importGroup;
+    if (!g || !files.length) return;
+    showToast('QR-codes lezen...', false);
+    const found = [];
+    let failed = 0;
+    for (const f of files) {
+      const text = await readImage(f);
+      if (text) found.push(text); else failed++;
+    }
+    const unique = [...new Set(found)];
+    const doubles = found.length - unique.length;
+    if (unique.length !== g.total) {
+      let msg = `Er horen ${g.total} verschillende QR-codes bij ${g.title.toLowerCase()}, ik vond er ${unique.length}.`;
+      if (failed) msg += ` Op ${failed} plaatje${failed === 1 ? '' : 's'} vond ik geen QR-code.`;
+      if (doubles) msg += ` ${doubles} code${doubles === 1 ? ' zat' : 's zaten'} er dubbel in.`;
+      alert(msg + ' Kies ze nog een keer, allemaal tegelijk.');
+      document.getElementById('toast').classList.remove('show');
+      return;
+    }
+    // Vaste volgorde, zodat elke telefoon dezelfde nummering heeft (nodig voor het bijwerken met elkaar)
+    codes[g.id] = unique.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    saveCodes();
+    render();
+    showToast(`${g.icon} ${g.total} QR-codes toegevoegd`, false);
+  };
+
+  let voucherOpen = null;
+
+  function showVoucher(g, i) {
+    voucherOpen = { g, i };
+    const v = state[g.id][i];
+    const qr = qrcode(0, 'M');
+    qr.addData(codes[g.id][i]);
+    qr.make();
+    document.getElementById('voucher-qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+    document.getElementById('voucher-title').textContent = `${g.icon} ${g.title}`;
+    document.getElementById('voucher-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
+    document.getElementById('voucher-used').hidden = !v.u;
+    document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
+    open('voucher');
+  }
+
+  document.getElementById('voucher-toggle').onclick = () => {
+    if (!voucherOpen) return;
+    const { g, i } = voucherOpen;
+    closeAll();
+    toggle(g, i);
+  };
+
   function render() {
     const root = document.getElementById('groups');
     root.innerHTML = '';
@@ -269,7 +378,10 @@
           <div class="count"><b>${n}</b><span>van ${g.total} over</span></div>
         </div>
         <div class="tokens"></div>
-        <button class="use" ${n === 0 ? 'disabled' : ''}>${n === 0 ? 'Op! 😢' : 'Gebruik 1 voucher'}</button>`;
+        <button class="use" ${n === 0 ? 'disabled' : ''}>${n === 0 ? 'Op! 😢' : hasCodes(g.id) ? 'Toon volgende voucher' : 'Gebruik 1 voucher'}</button>
+        ${hasCodes(g.id)
+          ? `<div class="codes-note">QR-codes staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`
+          : `<button class="add">📷 Voeg ${g.total} screenshots van de QR-codes toe</button>`}`;
 
       const tokens = card.querySelector('.tokens');
       state[g.id].forEach((v, i) => {
@@ -277,13 +389,25 @@
         t.className = 'token' + (v.u ? ' used' : '');
         t.textContent = v.u ? '✓' : g.icon;
         t.setAttribute('aria-label', `${g.title} voucher ${i + 1}, ${v.u ? 'gebruikt' : 'nog over'}`);
-        t.onclick = () => toggle(g, i);
+        t.onclick = () => hasCodes(g.id) ? showVoucher(g, i) : toggle(g, i);
         tokens.appendChild(t);
       });
 
       card.querySelector('.use').onclick = () => {
         const i = state[g.id].findIndex(v => !v.u);
-        if (i !== -1) toggle(g, i);
+        if (i === -1) return;
+        if (hasCodes(g.id)) showVoucher(g, i); else toggle(g, i);
+      };
+
+      const add = card.querySelector('.add');
+      if (add) add.onclick = () => { importGroup = g; document.getElementById('import').click(); };
+      const remove = card.querySelector('[data-remove]');
+      if (remove) remove.onclick = () => {
+        if (confirm(`De QR-codes van ${g.title.toLowerCase()} van deze telefoon verwijderen? De stand blijft bewaard.`)) {
+          delete codes[g.id];
+          saveCodes();
+          render();
+        }
       };
       root.appendChild(card);
     });
@@ -307,8 +431,9 @@
       : `${g.icon} Voucher teruggezet, nog ${n} over`);
   }
 
-  function showToast(text) {
+  function showToast(text, undo = true) {
     document.getElementById('toast-text').textContent = text;
+    document.getElementById('undo').hidden = !undo;
     const t = document.getElementById('toast');
     t.classList.add('show');
     clearTimeout(undoTimer);
@@ -408,8 +533,8 @@
   }
 
   // Zoekt een QR-code in een plaatje (camerabeeld of foto)
-  function findCode(source, w, h) {
-    const scale = Math.min(1, 800 / Math.max(w, h));
+  function findCode(source, w, h, max = 800) {
+    const scale = Math.min(1, max / Math.max(w, h));
     canvas.width = Math.round(w * scale);
     canvas.height = Math.round(h * scale);
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);

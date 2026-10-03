@@ -8,6 +8,16 @@ Simpel appje om onze drinkvouchers bij te houden:
 Tik op een voucher of op "Gebruik 1 voucher" om hem af te strepen. Per ongeluk getikt? Tik op "Herstel" of tik nog een keer op de voucher.
 Elke telefoon houdt zijn eigen stand bij. Er is geen account, database of server nodig.
 
+## QR-codes van de vouchers toevoegen
+
+1. Zorg dat iedereen de screenshots van de vouchers in Foto's heeft (bijvoorbeeld via AirDrop of de groepsapp).
+2. Tik in de app bij "Bier of water" op **Voeg 15 screenshots van de QR-codes toe** en kies alle 15 tegelijk.
+3. Doe hetzelfde bij "Premium of soda" met de 3 screenshots.
+
+De QR-codes worden alleen op je eigen telefoon bewaard. Ze komen nergens online en niet in deze repository.
+Aan de bar tik je op **Toon volgende voucher**, laat je de QR-code scannen en tik je op **Gescand, afvinken**.
+De app zet de codes in een vaste volgorde, zodat voucher 1 op elke telefoon dezelfde is (nodig voor het bijwerken met elkaar).
+
 ## Bijwerken met elkaar (zonder internet)
 
 1. De een tikt op **Laat mijn stand zien**. Er verschijnt een QR-code.
