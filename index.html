@@ -153,6 +153,8 @@
   }
   .fu-code.has-img { padding: 0; background: none; }
   .qr-box img { display: block; width: 100%; height: auto; }
+  .qr-note { color: var(--muted); font-size: 12px; margin-top: -4px; }
+  .version { text-align: center; color: var(--muted); font-size: 12px; opacity: .6; margin-top: 18px; }
   .fu-code img { display: block; width: min(80vw, 330px); border-radius: 12px; }
   .order-btn {
     width: 100%; margin-bottom: 16px; border: 0; border-radius: 18px; padding: 18px;
@@ -264,6 +266,7 @@
 
   <button class="reset" id="demo" hidden>Probeer met nep-codes (demo)</button>
   <button class="reset" id="reset">Alles terugzetten</button>
+  <div class="version">Versie 9</div>
 </main>
 
 <div class="overlay" id="show" hidden>
@@ -289,6 +292,7 @@
   <div class="fu-code" id="voucher-code" hidden></div>
   <div class="demo-badge" id="voucher-demo" hidden>DEMO, NIET ECHT</div>
   <div class="qr-box" id="voucher-qr"></div>
+  <div class="qr-note" id="voucher-qrnote"></div>
   <div class="voucher-used" id="voucher-used" hidden>Deze voucher is al gebruikt</div>
   <button class="big" id="voucher-toggle"></button>
   <button class="close" data-close>Sluiten</button>
@@ -311,6 +315,7 @@
     <div class="fu-code" id="step-code" hidden></div>
     <div class="demo-badge" id="step-demo" hidden>DEMO, NIET ECHT</div>
     <div class="qr-box" id="step-qr"></div>
+    <div class="qr-note" id="step-qrnote"></div>
     <div class="no-qr" id="step-noqr" hidden>Deze QR-code staat niet in de app. Laat de screenshot van deze voucher zien.</div>
     <div class="stamp" id="step-stamp"></div>
   </div>
@@ -420,6 +425,12 @@
   // Toont de originele QR-code uit de screenshot, of tekent hem zelf als die er niet is
   function showVoucherQr(el, g, i) {
     const img = qrImgOf(g.id, i);
+    const note = document.getElementById(el.id + 'note');
+    if (note) {
+      note.textContent = img ? 'Originele QR-code uit je screenshot'
+        : isDemo(qrOf(g.id, i)) || isBuiltin(g.id) ? ''
+        : 'QR-code opnieuw getekend, met dezelfde code als je screenshot';
+    }
     if (img) {
       el.innerHTML = '';
       const im = new Image(); im.src = img; im.alt = 'QR-code van de voucher';
@@ -925,22 +936,25 @@
       for (const m of [0.015, 0.025, 0.04, 0.06]) {
         const x0 = left - size * m, y0 = top - size * m;
         const w = right - left + 2 * size * m, h = bottom - top + 2 * size * m;
-        const pad = Math.round(560 * 0.06);
+        const S = Math.round(Math.min(720, Math.max(400, w)));
+        const pad = Math.round(S * 0.06);
         const out = document.createElement('canvas');
-        out.width = 560 + 2 * pad;
-        out.height = Math.round(560 * h / w) + 2 * pad;
+        out.width = S + 2 * pad;
+        out.height = Math.round(S * h / w) + 2 * pad;
         const c = out.getContext('2d');
+        c.imageSmoothingQuality = 'high';
         c.fillStyle = '#fff';
         c.fillRect(0, 0, out.width, out.height);
-        c.drawImage(img, x0, y0, w, h, pad, pad, 560, out.height - 2 * pad);
+        c.drawImage(img, x0, y0, w, h, pad, pad, S, out.height - 2 * pad);
         // Dun wit kader over de rand, zodat er geen stukje donkere achtergrond meer te zien is
-        const edge = Math.max(2, Math.round(560 * m * 0.5));
+        const edge = Math.max(2, Math.round(S * m * 0.5));
         c.strokeStyle = '#fff';
         c.lineWidth = edge * 2;
-        c.strokeRect(pad, pad, 560, out.height - 2 * pad);
-        const data = out.toDataURL('image/jpeg', 0.92);
-        const check = findCode(out, out.width, out.height, 800);
-        if (check === found.data) return data;
+        c.strokeRect(pad, pad, S, out.height - 2 * pad);
+        const data = out.toDataURL('image/png');
+        for (const max of [out.width, 1000, 600, 450, 800]) {
+          if (findCode(out, out.width, out.height, max) === found.data) return data;
+        }
       }
     } catch (e) {}
     return null;
