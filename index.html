@@ -151,6 +151,8 @@
     font-family: ui-monospace, Menlo, monospace; font-size: 30px; font-weight: 800; letter-spacing: 3px;
     background: #f1e2c8; color: #000; border-radius: 12px; padding: 8px 18px;
   }
+  .fu-code.has-img { padding: 0; background: none; }
+  .fu-code img { display: block; width: min(80vw, 330px); border-radius: 12px; }
   .order-btn {
     width: 100%; margin-bottom: 16px; border: 0; border-radius: 18px; padding: 18px;
     font-size: 19px; font-weight: 800; cursor: pointer;
@@ -188,9 +190,12 @@
   }
   .step-card.out { transform: translateX(-115%) rotate(-6deg); opacity: 0; }
   .step-card.enter { transform: translateX(115%) rotate(6deg); opacity: 0; transition: none; }
-  #step { gap: 10px; }
+  #step, #voucher { gap: 10px; }
+  #voucher .qr-box { width: min(80vw, 40vh, 340px); padding: 12px; }
+  #voucher h2 { font-size: 22px; }
   #step .step-card { gap: 8px; }
-  #step .qr-box { width: min(80vw, 42vh, 360px); padding: 12px; }
+  #step .qr-box { width: min(80vw, 38vh, 340px); padding: 12px; }
+  #step .fu-code img { width: min(70vw, 280px); }
   #step h2 { font-size: 22px; }
   .step-card.in { transition: transform .36s cubic-bezier(.2, .9, .3, 1.15), opacity .3s ease-out; }
   .stamp {
@@ -394,6 +399,23 @@
 
   function saveCodes() {
     try { localStorage.setItem(CODES_KEY, JSON.stringify(codes)); } catch (e) {}
+    try { localStorage.setItem(IMGS_KEY, JSON.stringify(codeImgs)); } catch (e) {}
+  }
+
+  // Uitgeknipte cijfercode (plaatje) per voucher, uit de screenshot. Alleen op deze telefoon.
+  const IMGS_KEY = 'bakkenbeheer-codeimgs';
+  let codeImgs = {};
+  try { codeImgs = JSON.parse(localStorage.getItem(IMGS_KEY)) || {}; } catch (e) {}
+  function codeImgOf(id, i) { return !isBuiltin(id) && Array.isArray(codeImgs[id]) ? codeImgs[id][i] || null : null; }
+
+  // Zet de cijfercode in het element: als tekst (vaste vouchers) of als uitgeknipt plaatje
+  function fillCode(el, g, i) {
+    const text = codeOf(g.id, i), img = codeImgOf(g.id, i);
+    el.innerHTML = '';
+    el.classList.toggle('has-img', !text && !!img);
+    if (text) el.textContent = text;
+    else if (img) { const im = new Image(); im.src = img; im.alt = 'Cijfercode van de voucher'; el.appendChild(im); }
+    el.hidden = !text && !img;
   }
 
   function isBuiltin(id) { return Array.isArray(BUILTIN[id]); }
@@ -417,6 +439,7 @@
     GROUPS.forEach(g => {
       if (!hasCodes(g.id)) {
         codes[g.id] = Array.from({ length: g.total }, (_, i) => `${DEMO_PREFIX}${g.id.toUpperCase()}-${String(i + 1).padStart(2, '0')}`);
+        delete codeImgs[g.id];
       }
     });
     saveCodes();
@@ -430,12 +453,12 @@
       img.onload = () => {
         URL.revokeObjectURL(img.src);
         // Eerst verkleind (snel), anders op volle grootte proberen
-        let text = null;
+        let found = null;
         for (const max of [1000, 1400, 800, 2600]) {
-          text = findCode(img, img.naturalWidth, img.naturalHeight, max);
-          if (text) break;
+          found = findCodeFull(img, img.naturalWidth, img.naturalHeight, max);
+          if (found) break;
         }
-        resolve(text);
+        resolve(found ? { text: found.data, label: cropCodeLabel(img, found) } : null);
       };
       img.onerror = () => { URL.revokeObjectURL(img.src); resolve(null); };
       img.src = URL.createObjectURL(file);
@@ -449,10 +472,11 @@
     if (!g || !files.length) return;
     showToast('QR-codes lezen...', false);
     const found = [];
+    const labels = {};
     let failed = 0;
     for (const f of files) {
-      const text = await readImage(f);
-      if (text) found.push(text); else failed++;
+      const res = await readImage(f);
+      if (res) { found.push(res.text); if (!labels[res.text]) labels[res.text] = res.label; } else failed++;
     }
     const unique = [...new Set(found)];
     const doubles = found.length - unique.length;
@@ -466,6 +490,7 @@
     }
     // Vaste volgorde, zodat elke telefoon dezelfde nummering heeft (nodig voor het bijwerken met elkaar)
     codes[g.id] = unique.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    codeImgs[g.id] = codes[g.id].map(c => labels[c] || null);
     saveCodes();
     render();
     showToast(`${g.icon} ${g.total} QR-codes toegevoegd`, false);
@@ -479,9 +504,7 @@
     drawQr(document.getElementById('voucher-qr'), qrOf(g.id, i));
     document.getElementById('voucher-title').textContent = `${g.icon} ${g.title}`;
     document.getElementById('voucher-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
-    const codeEl = document.getElementById('voucher-code');
-    codeEl.textContent = codeOf(g.id, i) || '';
-    codeEl.hidden = !codeOf(g.id, i);
+    fillCode(document.getElementById('voucher-code'), g, i);
     document.getElementById('voucher-demo').hidden = !isDemo(qrOf(g.id, i));
     document.getElementById('voucher-used').hidden = !v.u;
     document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
@@ -543,6 +566,7 @@
       if (remove) remove.onclick = () => {
         if (confirm(`De QR-codes van ${g.title.toLowerCase()} van deze telefoon verwijderen? De stand blijft bewaard.`)) {
           delete codes[g.id];
+          delete codeImgs[g.id];
           saveCodes();
           render();
         }
@@ -678,9 +702,7 @@
     document.getElementById('step-count').textContent = `VOUCHER ${stepAt + 1} VAN ${steps.length}`;
     document.getElementById('step-title').textContent = `${g.icon} ${g.title}`;
     document.getElementById('step-nr').textContent = `${isBuiltin(g.id) ? 'Token' : 'Voucher'} ${i + 1} van ${g.total}`;
-    const codeEl = document.getElementById('step-code');
-    codeEl.textContent = code || '';
-    codeEl.hidden = !code;
+    fillCode(document.getElementById('step-code'), g, i);
     document.getElementById('step-demo').hidden = !isDemo(qr);
     document.getElementById('step-qr').hidden = !qr;
     document.getElementById('step-noqr').hidden = !!qr;
@@ -846,14 +868,37 @@
   }
 
   // Zoekt een QR-code in een plaatje (camerabeeld of foto)
-  function findCode(source, w, h, max = 800) {
+  function findCodeFull(source, w, h, max = 800) {
     const scale = Math.min(1, max / Math.max(w, h));
     canvas.width = Math.round(w * scale);
     canvas.height = Math.round(h * scale);
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-    return code ? code.data : null;
+    return code ? { data: code.data, location: code.location, scale } : null;
+  }
+
+  function findCode(source, w, h, max = 800) {
+    const found = findCodeFull(source, w, h, max);
+    return found ? found.data : null;
+  }
+
+  // Knipt het stuk onder de QR-code uit waar de cijfercode staat (zelfde plek op elke voucher)
+  function cropCodeLabel(img, found) {
+    try {
+      const L = found.location, k = 1 / found.scale;
+      const xs = [L.topLeftCorner.x, L.bottomLeftCorner.x, L.topRightCorner.x, L.bottomRightCorner.x].map(x => x * k);
+      const bottom = Math.max(L.bottomLeftCorner.y, L.bottomRightCorner.y) * k;
+      const left = Math.min(...xs), right = Math.max(...xs), size = right - left;
+      const x0 = Math.max(0, left - size * 0.1), x1 = Math.min(img.naturalWidth, right + size * 0.1);
+      const y0 = Math.max(0, bottom + size * 0.33), y1 = Math.min(img.naturalHeight, bottom + size * 0.66);
+      if (x1 - x0 < 20 || y1 - y0 < 10) return null;
+      const out = document.createElement('canvas');
+      out.width = 560;
+      out.height = Math.round(560 * (y1 - y0) / (x1 - x0));
+      out.getContext('2d').drawImage(img, x0, y0, x1 - x0, y1 - y0, 0, 0, out.width, out.height);
+      return out.toDataURL('image/jpeg', 0.85);
+    } catch (e) { return null; }
   }
 
   // Geeft true terug als de code een stand van Bakkenbeheer was

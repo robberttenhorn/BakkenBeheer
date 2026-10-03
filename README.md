@@ -14,6 +14,7 @@ Elke telefoon houdt zijn eigen stand bij. Er is geen account, database of server
 2. Tik in de app bij "Bier of water" op **Voeg 15 screenshots van de QR-codes toe** en kies alle 15 tegelijk.
 3. Doe hetzelfde bij "Premium of soda" met de 3 screenshots.
 
+De app knipt ook de cijfercode (onder de QR-code) uit de screenshot en toont die bij de voucher.
 De QR-codes worden alleen op je eigen telefoon bewaard. Ze komen nergens online en niet in deze repository.
 Aan de bar tik je op **Toon volgende voucher**, laat je de QR-code scannen en tik je op **Gescand, afvinken**.
 De app zet de codes in een vaste volgorde, zodat voucher 1 op elke telefoon dezelfde is (nodig voor het bijwerken met elkaar).
