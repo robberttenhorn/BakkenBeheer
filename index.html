@@ -171,6 +171,44 @@
   .pick .token.sel { opacity: 1; outline: 4px solid #fff; outline-offset: 2px; }
   .pick .token.used { opacity: .25; }
   .step-count { color: var(--muted); font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+  .step-dots { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .step-dots span {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--line);
+    transition: background .3s, transform .3s;
+  }
+  .step-dots span.done { background: #3ddc84; }
+  .step-dots span.skipped { background: var(--muted); }
+  .step-dots span.now { background: var(--beer); transform: scale(1.5); }
+
+  /* De voucherkaart schuift weg en de volgende schuift erin */
+  .step-card {
+    position: relative; width: 100%;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    transition: transform .28s ease-in, opacity .28s ease-in;
+  }
+  .step-card.out { transform: translateX(-115%) rotate(-6deg); opacity: 0; }
+  .step-card.enter { transform: translateX(115%) rotate(6deg); opacity: 0; transition: none; }
+  #step { gap: 10px; }
+  #step .step-card { gap: 8px; }
+  #step .qr-box { width: min(80vw, 42vh, 360px); padding: 12px; }
+  #step h2 { font-size: 22px; }
+  .step-card.in { transition: transform .36s cubic-bezier(.2, .9, .3, 1.15), opacity .3s ease-out; }
+  .stamp {
+    position: absolute; top: 46%; left: 50%; z-index: 2;
+    transform: translate(-50%, -50%) rotate(-14deg) scale(2.2); opacity: 0;
+    border: 6px solid currentColor; border-radius: 14px; padding: 6px 18px;
+    font-size: 40px; font-weight: 900; letter-spacing: 3px; background: rgba(18, 11, 31, .85);
+    pointer-events: none; transition: transform .18s ease-out, opacity .18s ease-out;
+  }
+  .stamp.ok { color: #3ddc84; }
+  .stamp.skip { color: var(--muted); }
+  .stamp.show { opacity: 1; transform: translate(-50%, -50%) rotate(-14deg) scale(1); }
+  @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  .step-count.pop { animation: pop .4s ease-out; color: var(--beer); }
+  @media (prefers-reduced-motion: reduce) {
+    .step-card.out { transform: none; }
+    .step-card.enter { transform: none; }
+  }
   .no-qr { background: rgba(255, 255, 255, .06); border: 1px dashed var(--line); border-radius: 16px; padding: 18px; max-width: 340px; }
   .demo-badge {
     display: inline-block; background: var(--premium); color: #fff; font-weight: 800;
@@ -258,14 +296,18 @@
   <button class="close" data-close>Annuleren</button>
 </div>
 
-<div class="overlay" id="step" hidden>
+<div class="overlay" id="step" hidden style="overflow-x:hidden">
+  <div class="step-dots" id="step-dots"></div>
   <div class="step-count" id="step-count"></div>
-  <h2 id="step-title"></h2>
-  <div class="voucher-nr" id="step-nr"></div>
-  <div class="fu-code" id="step-code" hidden></div>
-  <div class="demo-badge" id="step-demo" hidden>DEMO, NIET ECHT</div>
-  <div class="qr-box" id="step-qr"></div>
-  <div class="no-qr" id="step-noqr" hidden>Deze QR-code staat niet in de app. Laat de screenshot van deze voucher zien.</div>
+  <div class="step-card" id="step-card">
+    <h2 id="step-title"></h2>
+    <div class="voucher-nr" id="step-nr"></div>
+    <div class="fu-code" id="step-code" hidden></div>
+    <div class="demo-badge" id="step-demo" hidden>DEMO, NIET ECHT</div>
+    <div class="qr-box" id="step-qr"></div>
+    <div class="no-qr" id="step-noqr" hidden>Deze QR-code staat niet in de app. Laat de screenshot van deze voucher zien.</div>
+    <div class="stamp" id="step-stamp"></div>
+  </div>
   <button class="big" id="step-next"></button>
   <button class="close" id="step-skip">Niet gelukt, overslaan</button>
   <button class="close" id="step-stop">Stoppen</button>
@@ -645,12 +687,59 @@
     if (qr) drawQr(document.getElementById('step-qr'), qr);
     const last = stepAt === steps.length - 1;
     document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
+    document.getElementById('step-dots').innerHTML = steps.map((st, k) =>
+      `<span class="${k < stepAt ? st.result : k === stepAt ? 'now' : ''}"></span>`).join('');
   }
 
-  function nextStep() {
+  let stepBusy = false;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  // Stempel op de huidige voucher, kaart weg laten schuiven, volgende erin laten schuiven
+  async function nextStep(result) {
+    if (stepBusy) return;
+    stepBusy = true;
+    steps[stepAt].result = result;
+    const card = document.getElementById('step-card');
+    const stamp = document.getElementById('step-stamp');
+    const buttons = ['step-next', 'step-skip', 'step-stop'].map(id => document.getElementById(id));
+    buttons.forEach(b => { b.disabled = true; });
+
+    stamp.textContent = result === 'done' ? '✓ GESCAND' : 'OVERGESLAGEN';
+    stamp.className = 'stamp ' + (result === 'done' ? 'ok' : 'skip');
+    void stamp.offsetWidth;
+    stamp.classList.add('show');
+    await wait(450);
+
     stepAt++;
-    if (stepAt < steps.length) { showStep(); return; }
-    finishOrder();
+    if (stepAt >= steps.length) {
+      stamp.className = 'stamp';
+      buttons.forEach(b => { b.disabled = false; });
+      stepBusy = false;
+      finishOrder();
+      return;
+    }
+
+    card.classList.add('out');
+    await wait(280);
+    stamp.style.transition = 'none';
+    stamp.className = 'stamp';
+    void stamp.offsetWidth;
+    stamp.style.transition = '';
+    showStep();
+    card.classList.remove('out');
+    card.classList.add('enter');
+    void card.offsetWidth;
+    card.classList.remove('enter');
+    card.classList.add('in');
+    const count = document.getElementById('step-count');
+    count.classList.remove('pop');
+    void count.offsetWidth;
+    count.classList.add('pop');
+    if (navigator.vibrate) navigator.vibrate(15);
+    await wait(380);
+    card.classList.remove('in');
+    buttons.forEach(b => { b.disabled = false; });
+    stepBusy = false;
   }
 
   function finishOrder() {
@@ -661,6 +750,7 @@
   }
 
   document.getElementById('step-next').onclick = () => {
+    if (stepBusy) return;
     const { g, i } = steps[stepAt];
     if (!state[g.id][i].u) {
       setUsed(g.id, i, true);
@@ -669,12 +759,13 @@
       if (navigator.vibrate) navigator.vibrate(20);
     }
     stepUsed++;
-    nextStep();
+    nextStep('done');
   };
 
-  document.getElementById('step-skip').onclick = () => { stepSkipped++; nextStep(); };
+  document.getElementById('step-skip').onclick = () => { if (stepBusy) return; stepSkipped++; nextStep('skipped'); };
 
   document.getElementById('step-stop').onclick = () => {
+    if (stepBusy) return;
     const rest = steps.length - stepAt;
     const restText = rest === 1 ? 'De voucher die nog niet gescand is, blijft' : `De ${rest} vouchers die nog niet gescand zijn, blijven`;
     if (rest > 0 && !confirm(`Stoppen? ${restText} beschikbaar.`)) return;
