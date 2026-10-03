@@ -157,7 +157,33 @@
     display: block; max-width: min(88vw, 400px); max-height: 60vh; width: auto; height: auto;
     cursor: zoom-in;
   }
-  #step .shot { max-height: 52vh; }
+  /* Bestelscherm: dunne balk boven, knoppen onder, de rest is voor de voucher */
+  #step {
+    justify-content: flex-start; gap: 8px; overflow: hidden;
+    height: 100vh; height: 100dvh;
+    padding: calc(env(safe-area-inset-top) + 8px) 10px calc(env(safe-area-inset-bottom) + 10px);
+  }
+  .step-top { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; }
+  .step-meta { text-align: left; min-width: 0; }
+  .step-meta .step-count { font-size: 14px; }
+  .step-info { color: var(--text); font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step-x {
+    flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .08); color: var(--muted); font-size: 18px; cursor: pointer;
+  }
+  #step .step-card { flex: 1; min-height: 0; justify-content: center; }
+  .shot-wrap { position: relative; flex: 1; min-height: 0; width: 100%; }
+  .shot-wrap[hidden] { display: none; }
+  .shot-wrap .shot {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    max-width: none; max-height: none; object-fit: contain;
+  }
+  .step-actions { width: 100%; display: flex; gap: 8px; flex: none; }
+  .step-actions .big { flex: 1; min-width: 0; padding: 16px 10px; }
+  .step-skip {
+    flex: none; border: 1px solid var(--line); background: none; color: var(--muted);
+    border-radius: 16px; padding: 0 14px; font-size: 15px; cursor: pointer;
+  }
   .shot-hint { color: var(--muted); font-size: 12px; margin-top: -4px; }
   .zoom {
     position: fixed; inset: 0; z-index: 20; background: #000;
@@ -278,7 +304,7 @@
 
   <button class="reset" id="demo" hidden>Probeer met nep-codes (demo)</button>
   <button class="reset" id="reset">Alles terugzetten</button>
-  <div class="version">Versie 12</div>
+  <div class="version">Versie 13</div>
 </main>
 
 <div class="overlay" id="show" hidden>
@@ -320,24 +346,28 @@
   <button class="close" data-close>Annuleren</button>
 </div>
 
-<div class="overlay" id="step" hidden style="overflow-x:hidden">
-  <div class="step-dots" id="step-dots"></div>
-  <div class="step-count" id="step-count"></div>
+<div class="overlay" id="step" hidden>
+  <div class="step-top">
+    <div class="step-meta">
+      <div class="step-count" id="step-count"></div>
+      <div class="step-info" id="step-info"></div>
+    </div>
+    <div class="step-dots" id="step-dots"></div>
+    <button class="step-x" id="step-stop" aria-label="Stoppen">✕</button>
+  </div>
   <div class="step-card" id="step-card">
-    <h2 id="step-title"></h2>
-    <div class="voucher-nr" id="step-nr"></div>
+    <div class="shot-wrap" id="step-shotwrap" hidden><img class="shot" id="step-shot" alt="Afbeelding van de voucher"></div>
     <div class="fu-code" id="step-code" hidden></div>
     <div class="demo-badge" id="step-demo" hidden>DEMO, NIET ECHT</div>
-    <img class="shot" id="step-shot" alt="Screenshot van de voucher" hidden>
-    <div class="shot-hint" id="step-shothint" hidden>Tik op de voucher om hem groter te maken</div>
     <div class="qr-box" id="step-qr"></div>
     <div class="qr-note" id="step-qrnote"></div>
     <div class="no-qr" id="step-noqr" hidden>Deze QR-code staat niet in de app. Laat de screenshot van deze voucher zien.</div>
     <div class="stamp" id="step-stamp"></div>
   </div>
-  <button class="big" id="step-next"></button>
-  <button class="close" id="step-skip">Niet gelukt, overslaan</button>
-  <button class="close" id="step-stop">Stoppen</button>
+  <div class="step-actions">
+    <button class="step-skip" id="step-skip">Overslaan</button>
+    <button class="big" id="step-next"></button>
+  </div>
 </div>
 
 <input type="file" id="import" accept="image/*" multiple hidden>
@@ -492,8 +522,10 @@
   function showShot(prefix, g, i) {
     const shot = shotOf(g.id, i);
     const img = document.getElementById(prefix + '-shot');
-    document.getElementById(prefix + '-shothint').hidden = !shot;
-    img.hidden = !shot;
+    const hint = document.getElementById(prefix + '-shothint');
+    if (hint) hint.hidden = !shot;
+    const wrap = document.getElementById(prefix + '-shotwrap');
+    if (wrap) wrap.hidden = !shot; else img.hidden = !shot;
     if (shot) img.src = shot; else img.removeAttribute('src');
     if (shot) {
       document.getElementById(prefix + '-qr').hidden = true;
@@ -856,16 +888,15 @@
   function showStep() {
     const { g, i } = steps[stepAt];
     const qr = qrOf(g.id, i), code = codeOf(g.id, i);
-    document.getElementById('step-count').textContent = `VOUCHER ${stepAt + 1} VAN ${steps.length}`;
-    document.getElementById('step-title').textContent = `${g.icon} ${g.title}`;
-    document.getElementById('step-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
+    document.getElementById('step-count').textContent = `${stepAt + 1} VAN ${steps.length}`;
+    document.getElementById('step-info').textContent = `${g.icon} ${g.title} · voucher ${i + 1}`;
     fillCode(document.getElementById('step-code'), g, i);
     document.getElementById('step-demo').hidden = !isDemo(qr);
     document.getElementById('step-qr').hidden = !qr;
     document.getElementById('step-noqr').hidden = !!qr;
     if (qr) showVoucherQr(document.getElementById('step-qr'), g, i);
     if (qr) showShot('step', g, i);
-    else { document.getElementById('step-shot').hidden = true; document.getElementById('step-shothint').hidden = true; }
+    else document.getElementById('step-shotwrap').hidden = true;
     const last = stepAt === steps.length - 1;
     document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
     document.getElementById('step-dots').innerHTML = steps.map((st, k) =>
