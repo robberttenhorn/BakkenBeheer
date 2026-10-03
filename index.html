@@ -147,6 +147,31 @@
   .codes-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; }
   .codes-note button { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 13px; cursor: pointer; }
   .voucher-nr { font-size: 15px; color: var(--muted); }
+  .fu-code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 30px; font-weight: 800; letter-spacing: 3px;
+    background: #f1e2c8; color: #000; border-radius: 12px; padding: 8px 18px;
+  }
+  .order-btn {
+    width: 100%; margin-bottom: 16px; border: 0; border-radius: 18px; padding: 18px;
+    font-size: 19px; font-weight: 800; cursor: pointer;
+    background: linear-gradient(135deg, var(--premium), #7b2ff7); color: #fff;
+  }
+  .order-btn:active { transform: scale(.98); }
+  .overlay.top { justify-content: flex-start; overflow-y: auto; }
+  .pick-group { width: 100%; max-width: 480px; text-align: left; }
+  .pick-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .pick-head .card-title { font-size: 18px; }
+  .stepper { display: flex; align-items: center; gap: 14px; }
+  .stepper button {
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .08); color: var(--text); font-size: 24px; cursor: pointer;
+  }
+  .stepper b { font-size: 26px; min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+  .pick .token { font-size: 17px; font-weight: 800; opacity: .3; }
+  .pick .token.sel { opacity: 1; outline: 4px solid #fff; outline-offset: 2px; }
+  .pick .token.used { opacity: .25; }
+  .step-count { color: var(--muted); font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+  .no-qr { background: rgba(255, 255, 255, .06); border: 1px dashed var(--line); border-radius: 16px; padding: 18px; max-width: 340px; }
   .demo-badge {
     display: inline-block; background: var(--premium); color: #fff; font-weight: 800;
     border-radius: 999px; padding: 4px 12px; font-size: 13px; letter-spacing: 1px;
@@ -179,6 +204,8 @@
   <div class="install" id="install" hidden>
     Tip: tik in Safari op <b>Deel</b> (vierkantje met pijl) en kies <b>Zet op beginscherm</b>. Dan staat Bakkenbeheer als app op je telefoon.
   </div>
+
+  <button class="order-btn" id="order-btn">🛒 Bestelling maken</button>
 
   <div id="groups"></div>
 
@@ -215,11 +242,33 @@
 <div class="overlay" id="voucher" hidden>
   <h2 id="voucher-title"></h2>
   <div class="voucher-nr" id="voucher-nr"></div>
+  <div class="fu-code" id="voucher-code" hidden></div>
   <div class="demo-badge" id="voucher-demo" hidden>DEMO, NIET ECHT</div>
   <div class="qr-box" id="voucher-qr"></div>
   <div class="voucher-used" id="voucher-used" hidden>Deze voucher is al gebruikt</div>
   <button class="big" id="voucher-toggle"></button>
   <button class="close" data-close>Sluiten</button>
+</div>
+
+<div class="overlay top" id="order" hidden>
+  <h2>🛒 Bestelling maken</h2>
+  <p>Kies hoeveel vouchers je nodig hebt. Met + en − kiest de app ze zelf, of tik zelf de vouchers aan die je wilt gebruiken.</p>
+  <div id="order-groups" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:22px"></div>
+  <button class="big" id="order-start" disabled>Start</button>
+  <button class="close" data-close>Annuleren</button>
+</div>
+
+<div class="overlay" id="step" hidden>
+  <div class="step-count" id="step-count"></div>
+  <h2 id="step-title"></h2>
+  <div class="voucher-nr" id="step-nr"></div>
+  <div class="fu-code" id="step-code" hidden></div>
+  <div class="demo-badge" id="step-demo" hidden>DEMO, NIET ECHT</div>
+  <div class="qr-box" id="step-qr"></div>
+  <div class="no-qr" id="step-noqr" hidden>Deze QR-code staat niet in de app. Laat de screenshot van deze voucher zien.</div>
+  <button class="big" id="step-next"></button>
+  <button class="close" id="step-skip">Niet gelukt, overslaan</button>
+  <button class="close" id="step-stop">Stoppen</button>
 </div>
 
 <input type="file" id="import" accept="image/*" multiple hidden>
@@ -285,6 +334,10 @@
 
   // ---------- QR-codes van de vouchers, alleen opgeslagen op deze telefoon ----------
 
+  // Vaste vouchers die in de app zitten: cijfercode (zoals op de voucher) en de inhoud van de QR-code.
+  // Volgorde = tokennummer op de voucher (token 1 van 15, token 2 van 15, ...).
+  const BUILTIN = {};
+
   const CODES_KEY = 'bakkenbeheer-codes';
   let codes = loadCodes();
   let importGroup = null;
@@ -301,7 +354,18 @@
     try { localStorage.setItem(CODES_KEY, JSON.stringify(codes)); } catch (e) {}
   }
 
-  function hasCodes(id) { return Array.isArray(codes[id]); }
+  function isBuiltin(id) { return Array.isArray(BUILTIN[id]); }
+  function hasCodes(id) { return isBuiltin(id) || Array.isArray(codes[id]); }
+  function qrOf(id, i) { return isBuiltin(id) ? BUILTIN[id][i].qr : hasCodes(id) ? codes[id][i] : null; }
+  function codeOf(id, i) { return isBuiltin(id) ? BUILTIN[id][i].code : null; }
+  function voucherName(g, i) { const c = codeOf(g.id, i); return `voucher ${i + 1}${c ? ` (${c})` : ''}`; }
+
+  function drawQr(el, text) {
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    el.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+  }
 
   // Demo: vult de app met nep-codes, zodat je hem kunt laten zien zonder echte vouchers
   const DEMO_PREFIX = 'DEMO-';
@@ -324,8 +388,12 @@
       img.onload = () => {
         URL.revokeObjectURL(img.src);
         // Eerst verkleind (snel), anders op volle grootte proberen
-        resolve(findCode(img, img.naturalWidth, img.naturalHeight, 1000) ||
-                findCode(img, img.naturalWidth, img.naturalHeight, 2600));
+        let text = null;
+        for (const max of [1000, 1400, 800, 2600]) {
+          text = findCode(img, img.naturalWidth, img.naturalHeight, max);
+          if (text) break;
+        }
+        resolve(text);
       };
       img.onerror = () => { URL.revokeObjectURL(img.src); resolve(null); };
       img.src = URL.createObjectURL(file);
@@ -366,13 +434,13 @@
   function showVoucher(g, i) {
     voucherOpen = { g, i };
     const v = state[g.id][i];
-    const qr = qrcode(0, 'M');
-    qr.addData(codes[g.id][i]);
-    qr.make();
-    document.getElementById('voucher-qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+    drawQr(document.getElementById('voucher-qr'), qrOf(g.id, i));
     document.getElementById('voucher-title').textContent = `${g.icon} ${g.title}`;
     document.getElementById('voucher-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
-    document.getElementById('voucher-demo').hidden = !isDemo(codes[g.id][i]);
+    const codeEl = document.getElementById('voucher-code');
+    codeEl.textContent = codeOf(g.id, i) || '';
+    codeEl.hidden = !codeOf(g.id, i);
+    document.getElementById('voucher-demo').hidden = !isDemo(qrOf(g.id, i));
     document.getElementById('voucher-used').hidden = !v.u;
     document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
     open('voucher');
@@ -381,8 +449,9 @@
   document.getElementById('voucher-toggle').onclick = () => {
     if (!voucherOpen) return;
     const { g, i } = voucherOpen;
+    if (state[g.id][i].u && !confirmRelease(g, i)) return;
     closeAll();
-    toggle(g, i);
+    toggle(g, i, true);
   };
 
   function render() {
@@ -403,8 +472,9 @@
         </div>
         <div class="tokens"></div>
         <button class="use" ${n === 0 ? 'disabled' : ''}>${n === 0 ? 'Op! 😢' : hasCodes(g.id) ? 'Toon volgende voucher' : 'Gebruik 1 voucher'}</button>
-        ${hasCodes(g.id)
-          ? (isDemo(codes[g.id][0])
+        ${isBuiltin(g.id) ? ''
+          : hasCodes(g.id)
+          ? (isDemo(qrOf(g.id, 0))
             ? `<div class="codes-note">Dit zijn nep-codes voor de demo. <button data-remove>Verwijderen</button></div>`
             : `<div class="codes-note">QR-codes staan alleen op deze telefoon. <button data-remove>Verwijderen</button></div>`)
           : `<button class="add">📷 Voeg ${g.total} screenshots van de QR-codes toe</button>`}`;
@@ -445,7 +515,15 @@
     state[id][i] = { u: used, t: now() };
   }
 
-  function toggle(g, i) {
+  // Extra controle voordat een gebruikte voucher weer beschikbaar wordt
+  function confirmRelease(g, i) {
+    return confirm(`Let op: ${voucherName(g, i)} staat als GEBRUIKT.\n\n` +
+      'Een code die aan de bar gescand is, werkt niet meer. Zet hem alleen terug als je zeker weet dat hij NIET gescand is.\n\n' +
+      'Weet je het zeker?');
+  }
+
+  function toggle(g, i, checked = false) {
+    if (state[g.id][i].u && !checked && !confirmRelease(g, i)) return;
     setUsed(g.id, i, !state[g.id][i].u);
     lastChange = { id: g.id, i };
     save();
@@ -469,6 +547,7 @@
   document.getElementById('undo').onclick = () => {
     if (!lastChange) return;
     const { id, i } = lastChange;
+    if (state[id][i].u && !confirmRelease(GROUPS.find(g => g.id === id), i)) return;
     setUsed(id, i, !state[id][i].u);
     lastChange = null;
     save();
@@ -477,13 +556,130 @@
   };
 
   document.getElementById('reset').onclick = () => {
-    if (confirm('Alle vouchers weer op "nog over" zetten?')) {
+    if (confirm('Alle vouchers weer op "nog over" zetten? Ook de vouchers die al gescand zijn.') &&
+        confirm('Echt zeker? Gescande codes werken aan de bar niet meer. Doe dit alleen als jullie nog niets gebruikt hebben.')) {
       const t = now();
       GROUPS.forEach(g => state[g.id].forEach((v, i) => { state[g.id][i] = { u: false, t }; }));
       lastChange = null;
       save();
       render();
     }
+  };
+
+  // ---------- Bestelling: eerst kiezen, daarna één voor één laten scannen ----------
+
+  let picked = {};   // per groep: Set met gekozen vouchers
+  let steps = [], stepAt = 0, stepUsed = 0, stepSkipped = 0;
+
+  function pickedCount() { return GROUPS.reduce((n, g) => n + picked[g.id].size, 0); }
+
+  function renderOrder() {
+    const root = document.getElementById('order-groups');
+    root.innerHTML = '';
+    GROUPS.forEach(g => {
+      const n = left(g.id);
+      const box = document.createElement('div');
+      box.className = 'pick-group ' + g.id;
+      box.innerHTML = `
+        <div class="pick-head">
+          <div><div class="card-title">${g.icon} ${g.title}</div><div class="card-hint">${n} over</div></div>
+          <div class="stepper"><button data-minus aria-label="Minder">−</button><b>${picked[g.id].size}</b><button data-plus aria-label="Meer">+</button></div>
+        </div>
+        <div class="tokens pick"></div>`;
+      const tokens = box.querySelector('.tokens');
+      state[g.id].forEach((v, i) => {
+        const t = document.createElement('button');
+        t.className = 'token' + (v.u ? ' used' : picked[g.id].has(i) ? ' sel' : '');
+        t.textContent = v.u ? '✓' : i + 1;
+        t.disabled = v.u;
+        t.onclick = () => {
+          if (picked[g.id].has(i)) picked[g.id].delete(i); else picked[g.id].add(i);
+          renderOrder();
+        };
+        tokens.appendChild(t);
+      });
+      box.querySelector('[data-plus]').onclick = () => {
+        const i = state[g.id].findIndex((v, k) => !v.u && !picked[g.id].has(k));
+        if (i !== -1) { picked[g.id].add(i); renderOrder(); }
+      };
+      box.querySelector('[data-minus]').onclick = () => {
+        if (!picked[g.id].size) return;
+        picked[g.id].delete(Math.max(...picked[g.id]));
+        renderOrder();
+      };
+      root.appendChild(box);
+    });
+    const total = pickedCount();
+    const start = document.getElementById('order-start');
+    start.disabled = total === 0;
+    start.textContent = total === 0 ? 'Kies eerst vouchers' : `Start: ${total} voucher${total === 1 ? '' : 's'} laten scannen`;
+  }
+
+  document.getElementById('order-btn').onclick = () => {
+    GROUPS.forEach(g => { picked[g.id] = new Set(); });
+    renderOrder();
+    open('order');
+  };
+
+  document.getElementById('order-start').onclick = () => {
+    steps = [];
+    GROUPS.forEach(g => [...picked[g.id]].sort((a, b) => a - b).forEach(i => steps.push({ g, i })));
+    if (!steps.length) return;
+    stepAt = 0; stepUsed = 0; stepSkipped = 0;
+    showStep();
+    open('step');
+  };
+
+  function showStep() {
+    const { g, i } = steps[stepAt];
+    const qr = qrOf(g.id, i), code = codeOf(g.id, i);
+    document.getElementById('step-count').textContent = `VOUCHER ${stepAt + 1} VAN ${steps.length}`;
+    document.getElementById('step-title').textContent = `${g.icon} ${g.title}`;
+    document.getElementById('step-nr').textContent = `Token ${i + 1} van ${g.total}`;
+    const codeEl = document.getElementById('step-code');
+    codeEl.textContent = code || '';
+    codeEl.hidden = !code;
+    document.getElementById('step-demo').hidden = !isDemo(qr);
+    document.getElementById('step-qr').hidden = !qr;
+    document.getElementById('step-noqr').hidden = !!qr;
+    if (qr) drawQr(document.getElementById('step-qr'), qr);
+    const last = stepAt === steps.length - 1;
+    document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
+  }
+
+  function nextStep() {
+    stepAt++;
+    if (stepAt < steps.length) { showStep(); return; }
+    finishOrder();
+  }
+
+  function finishOrder() {
+    closeAll();
+    let msg = `🍻 ${stepUsed} voucher${stepUsed === 1 ? '' : 's'} gebruikt`;
+    if (stepSkipped) msg += `, ${stepSkipped} niet (nog beschikbaar)`;
+    showToast(msg, false);
+  }
+
+  document.getElementById('step-next').onclick = () => {
+    const { g, i } = steps[stepAt];
+    if (!state[g.id][i].u) {
+      setUsed(g.id, i, true);
+      save();
+      render();
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+    stepUsed++;
+    nextStep();
+  };
+
+  document.getElementById('step-skip').onclick = () => { stepSkipped++; nextStep(); };
+
+  document.getElementById('step-stop').onclick = () => {
+    const rest = steps.length - stepAt;
+    const restText = rest === 1 ? 'De voucher die nog niet gescand is, blijft' : `De ${rest} vouchers die nog niet gescand zijn, blijven`;
+    if (rest > 0 && !confirm(`Stoppen? ${restText} beschikbaar.`)) return;
+    stepSkipped += rest;
+    finishOrder();
   };
 
   // ---------- Bijwerken met elkaar via een QR-code ----------

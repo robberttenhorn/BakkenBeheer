@@ -23,6 +23,18 @@ De app zet de codes in een vaste volgorde, zodat voucher 1 op elke telefoon deze
 Tik onderaan op **Probeer met nep-codes (demo)**. De app vult zich dan met nep-codes, herkenbaar aan het label "DEMO, NIET ECHT".
 Klaar met de demo? Tik bij elk blok op **Verwijderen** en voeg daarna de echte screenshots toe.
 
+## Bestelling maken
+
+1. Tik op **Bestelling maken**.
+2. Kies met + en − hoeveel vouchers je nodig hebt, of tik zelf de vouchers aan.
+3. Tik op **Start**. De app toont de vouchers één voor één. Na elke scan tik je op **Gescand, volgende**.
+4. Lukt er één niet, tik dan op **Niet gelukt, overslaan**. Die blijft beschikbaar.
+
+## Gebruikte voucher terugzetten
+
+Een voucher die als gebruikt staat, kun je alleen terugzetten na een extra bevestiging.
+Een code die aan de bar gescand is, werkt namelijk niet meer.
+
 ## Bijwerken met elkaar (zonder internet)
 
 1. De een tikt op **Laat mijn stand zien**. Er verschijnt een QR-code.
