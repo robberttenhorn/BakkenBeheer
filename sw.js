@@ -1,5 +1,5 @@
 // Bewaart de app op de telefoon zodat hij ook werkt zonder bereik.
-const CACHE = 'bakkenbeheer-v14';
+const CACHE = 'bakkenbeheer-v15';
 const FILES = ['./', 'index.html', 'lib/qrcode.js', 'lib/jsQR.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
