@@ -232,6 +232,10 @@
   .step-card.out { transform: translateX(-115%) rotate(-6deg); opacity: 0; }
   .step-card.enter { transform: translateX(115%) rotate(6deg); opacity: 0; transition: none; }
   #step, #voucher { gap: 10px; }
+  #voucher {
+    overflow: hidden; height: 100vh; height: 100dvh;
+    padding: calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px);
+  }
   #voucher .qr-box { width: min(80vw, 40vh, 340px); padding: 12px; }
   #voucher h2 { font-size: 22px; }
   #step .step-card { gap: 8px; }
@@ -304,7 +308,7 @@
 
   <button class="reset" id="demo" hidden>Probeer met nep-codes (demo)</button>
   <button class="reset" id="reset">Alles terugzetten</button>
-  <div class="version">Versie 13</div>
+  <div class="version">Versie 14</div>
 </main>
 
 <div class="overlay" id="show" hidden>
@@ -329,13 +333,14 @@
   <div class="voucher-nr" id="voucher-nr"></div>
   <div class="fu-code" id="voucher-code" hidden></div>
   <div class="demo-badge" id="voucher-demo" hidden>DEMO, NIET ECHT</div>
-  <img class="shot" id="voucher-shot" alt="Screenshot van de voucher" hidden>
-  <div class="shot-hint" id="voucher-shothint" hidden>Tik op de voucher om hem groter te maken</div>
+  <div class="shot-wrap" id="voucher-shotwrap" hidden><img class="shot" id="voucher-shot" alt="Afbeelding van de voucher"></div>
   <div class="qr-box" id="voucher-qr"></div>
   <div class="qr-note" id="voucher-qrnote"></div>
   <div class="voucher-used" id="voucher-used" hidden>Deze voucher is al gebruikt</div>
-  <button class="big" id="voucher-toggle"></button>
-  <button class="close" data-close>Sluiten</button>
+  <div class="step-actions">
+    <button class="step-skip" data-close>Sluiten</button>
+    <button class="big" id="voucher-toggle"></button>
+  </div>
 </div>
 
 <div class="overlay top" id="order" hidden>
@@ -692,7 +697,9 @@
     fillCode(document.getElementById('voucher-code'), g, i);
     document.getElementById('voucher-demo').hidden = !isDemo(qrOf(g.id, i));
     document.getElementById('voucher-qr').hidden = false;
-    showShot('voucher', g, i);
+    const hasShot = showShot('voucher', g, i);
+    document.getElementById('voucher-title').hidden = hasShot;
+    document.getElementById('voucher-nr').hidden = hasShot;
     document.getElementById('voucher-used').hidden = !v.u;
     document.getElementById('voucher-toggle').textContent = v.u ? 'Zet terug als niet gebruikt' : '✓ Gescand, afvinken';
     open('voucher');
@@ -895,8 +902,9 @@
     document.getElementById('step-qr').hidden = !qr;
     document.getElementById('step-noqr').hidden = !!qr;
     if (qr) showVoucherQr(document.getElementById('step-qr'), g, i);
-    if (qr) showShot('step', g, i);
-    else document.getElementById('step-shotwrap').hidden = true;
+    const hasShot = qr ? showShot('step', g, i) : false;
+    if (!qr) document.getElementById('step-shotwrap').hidden = true;
+    document.getElementById('step-info').hidden = hasShot;
     const last = stepAt === steps.length - 1;
     document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
     document.getElementById('step-dots').innerHTML = steps.map((st, k) =>
