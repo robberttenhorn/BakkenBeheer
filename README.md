@@ -1,6 +1,6 @@
 # Bakkenbeheer
 
-Simpel appje om de drink vouchers bij te houden (528 Ibiza):
+Simpel appje om onze drinkvouchers bij te houden:
 
 - 15 vouchers voor bier of water
 - 3 vouchers voor premium drinks of soda

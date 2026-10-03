@@ -1,4 +1,4 @@
-// Bewaart de app op de telefoon zodat hij ook werkt zonder bereik in de club.
+// Bewaart de app op de telefoon zodat hij ook werkt zonder bereik.
 const CACHE = 'bakkenbeheer-v2';
 const FILES = ['./', 'index.html', 'lib/qrcode.js', 'lib/jsQR.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
