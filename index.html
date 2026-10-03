@@ -152,6 +152,7 @@
     background: #f1e2c8; color: #000; border-radius: 12px; padding: 8px 18px;
   }
   .fu-code.has-img { padding: 0; background: none; }
+  .qr-box img { display: block; width: 100%; height: auto; }
   .fu-code img { display: block; width: min(80vw, 330px); border-radius: 12px; }
   .order-btn {
     width: 100%; margin-bottom: 16px; border: 0; border-radius: 18px; padding: 18px;
@@ -400,12 +401,34 @@
   function saveCodes() {
     try { localStorage.setItem(CODES_KEY, JSON.stringify(codes)); } catch (e) {}
     try { localStorage.setItem(IMGS_KEY, JSON.stringify(codeImgs)); } catch (e) {}
+    try { localStorage.setItem(QRIMGS_KEY, JSON.stringify(qrImgs)); } catch (e) {
+      // Te weinig opslagruimte: dan de getekende QR-codes gebruiken
+      qrImgs = {};
+      try { localStorage.removeItem(QRIMGS_KEY); } catch (e2) {}
+    }
   }
 
   // Uitgeknipte cijfercode (plaatje) per voucher, uit de screenshot. Alleen op deze telefoon.
   const IMGS_KEY = 'bakkenbeheer-codeimgs';
   let codeImgs = {};
   try { codeImgs = JSON.parse(localStorage.getItem(IMGS_KEY)) || {}; } catch (e) {}
+  const QRIMGS_KEY = 'bakkenbeheer-qrimgs';
+  let qrImgs = {};
+  try { qrImgs = JSON.parse(localStorage.getItem(QRIMGS_KEY)) || {}; } catch (e) {}
+  function qrImgOf(id, i) { return !isBuiltin(id) && Array.isArray(qrImgs[id]) ? qrImgs[id][i] || null : null; }
+
+  // Toont de originele QR-code uit de screenshot, of tekent hem zelf als die er niet is
+  function showVoucherQr(el, g, i) {
+    const img = qrImgOf(g.id, i);
+    if (img) {
+      el.innerHTML = '';
+      const im = new Image(); im.src = img; im.alt = 'QR-code van de voucher';
+      el.appendChild(im);
+    } else {
+      drawQr(el, qrOf(g.id, i));
+    }
+  }
+
   function codeImgOf(id, i) { return !isBuiltin(id) && Array.isArray(codeImgs[id]) ? codeImgs[id][i] || null : null; }
 
   // Zet de cijfercode in het element: als tekst (vaste vouchers) of als uitgeknipt plaatje
@@ -440,6 +463,7 @@
       if (!hasCodes(g.id)) {
         codes[g.id] = Array.from({ length: g.total }, (_, i) => `${DEMO_PREFIX}${g.id.toUpperCase()}-${String(i + 1).padStart(2, '0')}`);
         delete codeImgs[g.id];
+        delete qrImgs[g.id];
       }
     });
     saveCodes();
@@ -458,7 +482,7 @@
           found = findCodeFull(img, img.naturalWidth, img.naturalHeight, max);
           if (found) break;
         }
-        resolve(found ? { text: found.data, label: cropCodeLabel(img, found) } : null);
+        resolve(found ? { text: found.data, label: cropCodeLabel(img, found), qrImg: cropQr(img, found) } : null);
       };
       img.onerror = () => { URL.revokeObjectURL(img.src); resolve(null); };
       img.src = URL.createObjectURL(file);
@@ -472,11 +496,15 @@
     if (!g || !files.length) return;
     showToast('QR-codes lezen...', false);
     const found = [];
-    const labels = {};
+    const labels = {}, origQrs = {};
     let failed = 0;
     for (const f of files) {
       const res = await readImage(f);
-      if (res) { found.push(res.text); if (!labels[res.text]) labels[res.text] = res.label; } else failed++;
+      if (res) {
+        found.push(res.text);
+        if (!labels[res.text]) labels[res.text] = res.label;
+        if (!origQrs[res.text]) origQrs[res.text] = res.qrImg;
+      } else failed++;
     }
     const unique = [...new Set(found)];
     const doubles = found.length - unique.length;
@@ -491,6 +519,7 @@
     // Vaste volgorde, zodat elke telefoon dezelfde nummering heeft (nodig voor het bijwerken met elkaar)
     codes[g.id] = unique.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     codeImgs[g.id] = codes[g.id].map(c => labels[c] || null);
+    qrImgs[g.id] = codes[g.id].map(c => origQrs[c] || null);
     saveCodes();
     render();
     showToast(`${g.icon} ${g.total} QR-codes toegevoegd`, false);
@@ -501,7 +530,7 @@
   function showVoucher(g, i) {
     voucherOpen = { g, i };
     const v = state[g.id][i];
-    drawQr(document.getElementById('voucher-qr'), qrOf(g.id, i));
+    showVoucherQr(document.getElementById('voucher-qr'), g, i);
     document.getElementById('voucher-title').textContent = `${g.icon} ${g.title}`;
     document.getElementById('voucher-nr').textContent = `Voucher ${i + 1} van ${g.total}`;
     fillCode(document.getElementById('voucher-code'), g, i);
@@ -567,6 +596,7 @@
         if (confirm(`De QR-codes van ${g.title.toLowerCase()} van deze telefoon verwijderen? De stand blijft bewaard.`)) {
           delete codes[g.id];
           delete codeImgs[g.id];
+          delete qrImgs[g.id];
           saveCodes();
           render();
         }
@@ -706,7 +736,7 @@
     document.getElementById('step-demo').hidden = !isDemo(qr);
     document.getElementById('step-qr').hidden = !qr;
     document.getElementById('step-noqr').hidden = !!qr;
-    if (qr) drawQr(document.getElementById('step-qr'), qr);
+    if (qr) showVoucherQr(document.getElementById('step-qr'), g, i);
     const last = stepAt === steps.length - 1;
     document.getElementById('step-next').textContent = last ? '✓ Gescand, klaar' : '✓ Gescand, volgende';
     document.getElementById('step-dots').innerHTML = steps.map((st, k) =>
@@ -881,6 +911,39 @@
   function findCode(source, w, h, max = 800) {
     const found = findCodeFull(source, w, h, max);
     return found ? found.data : null;
+  }
+
+  // Knipt de originele QR-code uit de screenshot. Alleen als de uitsnede weer precies
+  // dezelfde code oplevert, wordt hij gebruikt.
+  function cropQr(img, found) {
+    try {
+      const L = found.location, k = 1 / found.scale;
+      const pts = [L.topLeftCorner, L.topRightCorner, L.bottomLeftCorner, L.bottomRightCorner].map(p => ({ x: p.x * k, y: p.y * k }));
+      const left = Math.min(...pts.map(p => p.x)), right = Math.max(...pts.map(p => p.x));
+      const top = Math.min(...pts.map(p => p.y)), bottom = Math.max(...pts.map(p => p.y));
+      const size = Math.max(right - left, bottom - top);
+      for (const m of [0.015, 0.025, 0.04, 0.06]) {
+        const x0 = left - size * m, y0 = top - size * m;
+        const w = right - left + 2 * size * m, h = bottom - top + 2 * size * m;
+        const pad = Math.round(560 * 0.06);
+        const out = document.createElement('canvas');
+        out.width = 560 + 2 * pad;
+        out.height = Math.round(560 * h / w) + 2 * pad;
+        const c = out.getContext('2d');
+        c.fillStyle = '#fff';
+        c.fillRect(0, 0, out.width, out.height);
+        c.drawImage(img, x0, y0, w, h, pad, pad, 560, out.height - 2 * pad);
+        // Dun wit kader over de rand, zodat er geen stukje donkere achtergrond meer te zien is
+        const edge = Math.max(2, Math.round(560 * m * 0.5));
+        c.strokeStyle = '#fff';
+        c.lineWidth = edge * 2;
+        c.strokeRect(pad, pad, 560, out.height - 2 * pad);
+        const data = out.toDataURL('image/jpeg', 0.92);
+        const check = findCode(out, out.width, out.height, 800);
+        if (check === found.data) return data;
+      }
+    } catch (e) {}
+    return null;
   }
 
   // Knipt het stuk onder de QR-code uit waar de cijfercode staat (zelfde plek op elke voucher)
